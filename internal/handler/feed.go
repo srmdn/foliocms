@@ -35,7 +35,8 @@ type rssFeed struct {
 func (h *Handler) GetFeed(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.Query(
 		`SELECT id, slug, title, description, tags, draft, publish_date, created_at, updated_at
-		 FROM posts WHERE draft = 0 ORDER BY publish_date DESC`,
+		 FROM posts WHERE draft = 0 AND (publish_date IS NULL OR publish_date <= CURRENT_TIMESTAMP)
+		 ORDER BY publish_date DESC`,
 	)
 	if err != nil {
 		http.Error(w, "could not fetch posts", http.StatusInternalServerError)

@@ -163,6 +163,37 @@ func TestPublicListExcludesDrafts(t *testing.T) {
 	}
 }
 
+func TestPublicListReturnsTagsArray(t *testing.T) {
+	dir := t.TempDir()
+	h := newTestHandler(t, dir)
+	r := routerWithHandler(h)
+
+	createPost(t, r, "tagged-post", map[string]any{
+		"title":        "Tagged",
+		"draft":        false,
+		"publish_date": "2026-01-01",
+		"tags":         []string{"go", "cms"},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/posts", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	var posts []struct {
+		Tags []string `json:"tags"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &posts); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+
+	if len(posts) != 1 {
+		t.Fatalf("expected 1 post, got %d", len(posts))
+	}
+	if len(posts[0].Tags) != 2 || posts[0].Tags[0] != "go" || posts[0].Tags[1] != "cms" {
+		t.Fatalf("expected tags [go cms], got %#v", posts[0].Tags)
+	}
+}
+
 func TestPublicListExcludesFutureDated(t *testing.T) {
 	dir := t.TempDir()
 	h := newTestHandler(t, dir)
@@ -209,6 +240,36 @@ func TestUpdatePost(t *testing.T) {
 
 	if w.Code != http.StatusNoContent {
 		t.Errorf("status: got %d, want %d\nbody: %s", w.Code, http.StatusNoContent, w.Body.String())
+	}
+}
+
+func TestGetAdminPostReturnsTagsArray(t *testing.T) {
+	dir := t.TempDir()
+	h := newTestHandler(t, dir)
+	r := routerWithHandler(h)
+
+	createPost(t, r, "tag-admin", map[string]any{
+		"title": "Tagged Admin",
+		"tags":  []string{"go", "cms"},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/posts/tag-admin", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want %d\nbody: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	var post struct {
+		Tags []string `json:"tags"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &post); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+
+	if len(post.Tags) != 2 || post.Tags[0] != "go" || post.Tags[1] != "cms" {
+		t.Fatalf("expected tags [go cms], got %#v", post.Tags)
 	}
 }
 

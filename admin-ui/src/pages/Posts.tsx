@@ -123,7 +123,7 @@ export function Posts() {
               <div className="post-list">
                 {visible.map((post) => {
                   const status = getStatus(post)
-                  const tags = post.tags ? post.tags.split(',').map((t) => t.trim()).filter(Boolean) : []
+                  const tags = post.tags ?? []
                   return (
                     <div
                       key={post.slug}

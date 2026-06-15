@@ -29,9 +29,29 @@ type postRequest struct {
 }
 
 type postResponse struct {
-	model.Post
-	Body      string `json:"body,omitempty"`
-	HeroImage string `json:"hero_image,omitempty"`
+	ID          int64     `json:"id"`
+	Slug        string    `json:"slug"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	Tags        []string  `json:"tags"`
+	Draft       bool      `json:"draft"`
+	PublishDate time.Time `json:"publish_date"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	Body        string    `json:"body,omitempty"`
+	HeroImage   string    `json:"hero_image,omitempty"`
+}
+
+type postListResponse struct {
+	ID          int64     `json:"id"`
+	Slug        string    `json:"slug"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	Tags        []string  `json:"tags"`
+	Draft       bool      `json:"draft"`
+	PublishDate time.Time `json:"publish_date"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // ListPosts returns published posts (public).
@@ -52,7 +72,7 @@ func (h *Handler) ListPosts(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not read posts")
 		return
 	}
-	writeJSON(w, http.StatusOK, posts)
+	writeJSON(w, http.StatusOK, toPostListResponses(posts))
 }
 
 // ListAllPosts returns all posts including drafts (admin).
@@ -72,7 +92,7 @@ func (h *Handler) ListAllPosts(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not read posts")
 		return
 	}
-	writeJSON(w, http.StatusOK, posts)
+	writeJSON(w, http.StatusOK, toPostListResponses(posts))
 }
 
 // GetPost returns a single published post with its body (public).
@@ -105,7 +125,7 @@ func (h *Handler) GetPost(w http.ResponseWriter, r *http.Request) {
 		heroImage, _ = store.ReadHeroImageAsDataURI(slug, pf.Frontmatter.HeroImage)
 	}
 
-	writeJSON(w, http.StatusOK, postResponse{Post: post, Body: pf.Body, HeroImage: heroImage})
+	writeJSON(w, http.StatusOK, toPostResponse(post, pf.Body, heroImage))
 }
 
 // GetAdminPost returns a single post regardless of draft status (admin).
@@ -138,7 +158,7 @@ func (h *Handler) GetAdminPost(w http.ResponseWriter, r *http.Request) {
 		heroImage, _ = store.ReadHeroImageAsDataURI(slug, pf.Frontmatter.HeroImage)
 	}
 
-	writeJSON(w, http.StatusOK, postResponse{Post: post, Body: pf.Body, HeroImage: heroImage})
+	writeJSON(w, http.StatusOK, toPostResponse(post, pf.Body, heroImage))
 }
 
 // CreatePost creates a new post (admin).
@@ -350,4 +370,54 @@ func boolToInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+func splitTags(tags string) []string {
+	if tags == "" {
+		return []string{}
+	}
+
+	parts := strings.Split(tags, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		tag := strings.TrimSpace(part)
+		if tag != "" {
+			result = append(result, tag)
+		}
+	}
+	return result
+}
+
+func toPostListResponses(posts []model.Post) []postListResponse {
+	responses := make([]postListResponse, 0, len(posts))
+	for _, post := range posts {
+		responses = append(responses, postListResponse{
+			ID:          post.ID,
+			Slug:        post.Slug,
+			Title:       post.Title,
+			Description: post.Description,
+			Tags:        splitTags(post.Tags),
+			Draft:       post.Draft,
+			PublishDate: post.PublishDate,
+			CreatedAt:   post.CreatedAt,
+			UpdatedAt:   post.UpdatedAt,
+		})
+	}
+	return responses
+}
+
+func toPostResponse(post model.Post, body, heroImage string) postResponse {
+	return postResponse{
+		ID:          post.ID,
+		Slug:        post.Slug,
+		Title:       post.Title,
+		Description: post.Description,
+		Tags:        splitTags(post.Tags),
+		Draft:       post.Draft,
+		PublishDate: post.PublishDate,
+		CreatedAt:   post.CreatedAt,
+		UpdatedAt:   post.UpdatedAt,
+		Body:        body,
+		HeroImage:   heroImage,
+	}
 }

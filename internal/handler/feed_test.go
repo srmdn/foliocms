@@ -97,6 +97,35 @@ func TestGetFeedExcludesDrafts(t *testing.T) {
 	}
 }
 
+func TestGetFeedExcludesFutureDatedPosts(t *testing.T) {
+	dir := t.TempDir()
+	h := newFeedHandler(t, dir)
+	r := routerWithFeed(h)
+
+	createPost(t, r, "future-post", map[string]any{
+		"title":        "Future Post",
+		"draft":        false,
+		"publish_date": "2099-01-01",
+	})
+	createPost(t, r, "past-post", map[string]any{
+		"title":        "Past Post",
+		"draft":        false,
+		"publish_date": "2026-02-01",
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/feed.xml", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	body := w.Body.String()
+	if strings.Contains(body, "Future Post") {
+		t.Errorf("feed must not include future-dated posts")
+	}
+	if !strings.Contains(body, "Past Post") {
+		t.Errorf("feed should include already-published posts")
+	}
+}
+
 func TestGetFeedValidXML(t *testing.T) {
 	dir := t.TempDir()
 	h := newFeedHandler(t, dir)

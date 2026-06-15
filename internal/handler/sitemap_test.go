@@ -94,6 +94,35 @@ func TestGetSitemapExcludesDrafts(t *testing.T) {
 	}
 }
 
+func TestGetSitemapExcludesFutureDatedPosts(t *testing.T) {
+	dir := t.TempDir()
+	h := newSitemapHandler(t, dir)
+	r := routerWithSitemap(h)
+
+	createPost(t, r, "future-post", map[string]any{
+		"title":        "Future Post",
+		"draft":        false,
+		"publish_date": "2099-01-01",
+	})
+	createPost(t, r, "past-post", map[string]any{
+		"title":        "Past Post",
+		"draft":        false,
+		"publish_date": "2026-02-01",
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/sitemap.xml", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	body := w.Body.String()
+	if strings.Contains(body, "future-post") {
+		t.Errorf("sitemap must not include future-dated posts")
+	}
+	if !strings.Contains(body, "past-post") {
+		t.Errorf("sitemap should include already-published posts")
+	}
+}
+
 func TestGetSitemapValidXML(t *testing.T) {
 	dir := t.TempDir()
 	h := newSitemapHandler(t, dir)

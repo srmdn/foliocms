@@ -5,7 +5,7 @@ export interface Post {
   slug: string
   title: string
   description: string
-  tags: string // comma-separated
+  tags: string[]
   draft: boolean
   publish_date: string
   created_at: string

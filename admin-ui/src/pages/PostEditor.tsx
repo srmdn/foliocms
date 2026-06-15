@@ -67,7 +67,7 @@ export function PostEditor() {
       setPostSlug(post.slug)
       setSlugManual(true)
       setDescription(post.description ?? '')
-      setTags(post.tags ?? '')
+      setTags((post.tags ?? []).join(', '))
       setPublishDate(post.publish_date.slice(0, 10))
       setDraft(post.draft)
       setBody(post.body ?? '')
