@@ -27,6 +27,7 @@ admin-ui/node_modules/
 # Local dev data
 staging-data/
 *.bak
+.local-docs/
 
 # OS
 .DS_Store
