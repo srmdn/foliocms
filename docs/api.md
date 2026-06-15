@@ -65,6 +65,12 @@ Clear the session cookie.
 
 List all published posts. Does not include post body.
 
+**Query parameters**
+
+| Name | Required | Description |
+|------|----------|-------------|
+| `tag` | No | Exact-match tag filter. `GET /api/posts?tag=go` returns only posts tagged `go`. |
+
 **Response `200`**
 ```json
 [
@@ -73,7 +79,7 @@ List all published posts. Does not include post body.
     "slug": "my-first-post",
     "title": "My First Post",
     "description": "A short description.",
-    "tags": "go,cms",
+    "tags": ["go", "cms"],
     "draft": false,
     "publish_date": "2026-03-27T00:00:00Z",
     "created_at": "2026-03-27T10:00:00Z",
@@ -98,7 +104,7 @@ Get a single published post including its Markdown body.
   "slug": "my-first-post",
   "title": "My First Post",
   "description": "A short description.",
-  "tags": "go,cms",
+  "tags": ["go", "cms"],
   "draft": false,
   "publish_date": "2026-03-27T00:00:00Z",
   "created_at": "2026-03-27T10:00:00Z",

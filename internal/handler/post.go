@@ -56,11 +56,19 @@ type postListResponse struct {
 
 // ListPosts returns published posts (public).
 func (h *Handler) ListPosts(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.db.Query(
-		`SELECT id, slug, title, description, tags, draft, publish_date, created_at, updated_at
-		 FROM posts WHERE draft = 0 AND (publish_date IS NULL OR publish_date <= CURRENT_TIMESTAMP)
-		 ORDER BY publish_date DESC`,
-	)
+	query := `SELECT id, slug, title, description, tags, draft, publish_date, created_at, updated_at
+		 FROM posts WHERE draft = 0 AND (publish_date IS NULL OR publish_date <= CURRENT_TIMESTAMP)`
+	args := []any{}
+
+	tag := strings.TrimSpace(r.URL.Query().Get("tag"))
+	if tag != "" {
+		query += ` AND instr(',' || replace(tags, ' ', '') || ',', ',' || ? || ',') > 0`
+		args = append(args, strings.ReplaceAll(tag, " ", ""))
+	}
+
+	query += ` ORDER BY publish_date DESC`
+
+	rows, err := h.db.Query(query, args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not fetch posts")
 		return

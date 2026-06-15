@@ -225,6 +225,81 @@ func TestPublicListExcludesFutureDated(t *testing.T) {
 	}
 }
 
+func TestPublicListFiltersByTag(t *testing.T) {
+	dir := t.TempDir()
+	h := newTestHandler(t, dir)
+	r := routerWithHandler(h)
+
+	createPost(t, r, "go-post", map[string]any{
+		"title":        "Go Post",
+		"draft":        false,
+		"publish_date": "2026-01-01",
+		"tags":         []string{"go", "cms"},
+	})
+	createPost(t, r, "js-post", map[string]any{
+		"title":        "JS Post",
+		"draft":        false,
+		"publish_date": "2026-01-01",
+		"tags":         []string{"javascript"},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/posts?tag=go", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	var posts []struct {
+		Slug string `json:"slug"`
+		Tags []string `json:"tags"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &posts); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+
+	if len(posts) != 1 {
+		t.Fatalf("expected 1 tagged post, got %d", len(posts))
+	}
+	if posts[0].Slug != "go-post" {
+		t.Fatalf("expected slug go-post, got %s", posts[0].Slug)
+	}
+}
+
+func TestPublicListTagFilterUsesExactMatch(t *testing.T) {
+	dir := t.TempDir()
+	h := newTestHandler(t, dir)
+	r := routerWithHandler(h)
+
+	createPost(t, r, "go-post", map[string]any{
+		"title":        "Go Post",
+		"draft":        false,
+		"publish_date": "2026-01-01",
+		"tags":         []string{"go"},
+	})
+	createPost(t, r, "golang-post", map[string]any{
+		"title":        "Golang Post",
+		"draft":        false,
+		"publish_date": "2026-01-01",
+		"tags":         []string{"golang"},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/posts?tag=go", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	var posts []struct {
+		Slug string `json:"slug"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &posts); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+
+	if len(posts) != 1 {
+		t.Fatalf("expected 1 exact-match post, got %d", len(posts))
+	}
+	if posts[0].Slug != "go-post" {
+		t.Fatalf("expected slug go-post, got %s", posts[0].Slug)
+	}
+}
+
 func TestUpdatePost(t *testing.T) {
 	dir := t.TempDir()
 	h := newTestHandler(t, dir)
