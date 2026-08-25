@@ -38,3 +38,45 @@ Project-specific (customize after copy):
 - code owners
 - release policy
 - escalation and incident contacts
+## Project: Folio
+
+A lightweight, self-hostable CMS. Single Go binary, SQLite, ships with a
+default Astro theme. No Docker required.
+
+## Stack
+- Backend: Go, Chi router, SQLite
+- Admin UI: React + Vite (source in `admin-ui/`, embedded in Go binary via `go:embed`)
+- Default theme: Astro SSR (separate repo: `foliocms-theme-default`)
+- Auth: JWT + CSRF
+- Binary: single compiled Go binary
+
+## Build (admin UI must be built before Go binary)
+```bash
+# Build admin UI and copy to embed directory
+bash scripts/build-admin.sh
+
+# Then build the Go binary
+go build -o folio ./cmd/server/
+```
+
+## Environment: LOCAL DEV
+
+## Writing Conventions
+- No em dashes (`—`) in commit messages, docs, README, release notes, or About section. Use a colon, semicolon, or rewrite the sentence.
+
+## Conventions
+- Secrets in `.env`: never committed
+- `.env.example` committed with all variable names, no real values
+- Build output gitignored
+- No Docker, no external runtime dependencies
+- Keep commits small: one logical change per commit
+
+## Testing
+- Run before every commit: `go test ./internal/... ./cmd/...` (from the repo root)
+- `./...` picks up Go files inside `admin-ui/node_modules/` — use the explicit paths above.
+- All tests must pass before committing.
+- Write tests for new backend code in the same commit.
+
+## Do not modify without confirming
+- Database migration files
+- `.env.example` (only add keys, never remove; removing could break existing installs)
