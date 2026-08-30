@@ -8,7 +8,9 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/srmdn/foliocms/internal/config"
 	"github.com/srmdn/foliocms/internal/handler"
+	"github.com/srmdn/foliocms/internal/storage"
 )
 
 func routerWithHandler(h *handler.Handler) *chi.Mux {
@@ -248,7 +250,7 @@ func TestPublicListFiltersByTag(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	var posts []struct {
-		Slug string `json:"slug"`
+		Slug string   `json:"slug"`
 		Tags []string `json:"tags"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &posts); err != nil {
@@ -315,6 +317,39 @@ func TestUpdatePost(t *testing.T) {
 
 	if w.Code != http.StatusNoContent {
 		t.Errorf("status: got %d, want %d\nbody: %s", w.Code, http.StatusNoContent, w.Body.String())
+	}
+}
+
+func TestUpdatePostRollsBackFilesystemOnDBError(t *testing.T) {
+	dir := t.TempDir()
+	database := newTestDB(t)
+	h := handler.New(database, &config.Config{ContentDir: dir, JWTSecret: "test-secret"})
+	r := routerWithHandler(h)
+	createPost(t, r, "old-slug", map[string]any{"title": "Original Title"})
+
+	// Force the DB write to fail while the filesystem write already happened.
+	database.Exec(`DROP TABLE posts`)
+
+	updated, _ := json.Marshal(map[string]any{"slug": "renamed-slug", "title": "Changed Title"})
+	req := httptest.NewRequest(http.MethodPut, "/api/admin/posts/old-slug", bytes.NewReader(updated))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status: got %d, want 500", w.Code)
+	}
+
+	store := storage.New(dir)
+	if store.Exists("renamed-slug") {
+		t.Error("renamed-slug must not remain after rollback")
+	}
+	restored, err := store.Read("old-slug")
+	if err != nil {
+		t.Fatalf("old-slug not restored: %v", err)
+	}
+	if restored.Frontmatter.Title != "Original Title" {
+		t.Errorf("restored title = %q, want %q", restored.Frontmatter.Title, "Original Title")
 	}
 }
 

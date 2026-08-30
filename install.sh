@@ -64,8 +64,8 @@ ok "Go $GO_VERSION found"
 check_cmd node
 NODE_VERSION=$(node --version | sed 's/v//')
 NODE_MAJOR=$(echo "$NODE_VERSION" | cut -d. -f1)
-if [[ "$NODE_MAJOR" -lt 18 ]]; then
-  die "Node.js 18 or later is required (found $NODE_VERSION)"
+if [[ "$NODE_MAJOR" -lt 22 ]]; then
+  die "Node.js 22 or later is required (found $NODE_VERSION)"
 fi
 ok "Node.js $NODE_VERSION found"
 

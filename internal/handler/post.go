@@ -268,6 +268,13 @@ func (h *Handler) UpdatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Snapshot the current file state so any failure below can restore it.
+	previous, err := store.Read(originalSlug)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not read post")
+		return
+	}
+
 	// Rename the content directory if the slug changed.
 	if newSlug != originalSlug {
 		if store.Exists(newSlug) {
@@ -292,9 +299,7 @@ func (h *Handler) UpdatePost(w http.ResponseWriter, r *http.Request) {
 			heroImagePath = path
 		}
 	} else {
-		if existing, err := store.Read(newSlug); err == nil {
-			heroImagePath = existing.Frontmatter.HeroImage
-		}
+		heroImagePath = previous.Frontmatter.HeroImage
 	}
 
 	if err := store.Write(newSlug, &storage.PostFile{
@@ -308,22 +313,37 @@ func (h *Handler) UpdatePost(w http.ResponseWriter, r *http.Request) {
 		},
 		Body: req.Body,
 	}); err != nil {
+		restorePost(store, newSlug, originalSlug, previous)
 		writeError(w, http.StatusInternalServerError, "could not write post file")
 		return
 	}
 
-	_, err := h.db.Exec(
+	_, err = h.db.Exec(
 		`UPDATE posts SET slug=?, title=?, description=?, tags=?, draft=?, publish_date=?, updated_at=CURRENT_TIMESTAMP
 		 WHERE slug=?`,
 		newSlug, req.Title, req.Description, strings.Join(req.Tags, ","),
 		boolToInt(req.Draft), publishDate, originalSlug,
 	)
 	if err != nil {
+		restorePost(store, newSlug, originalSlug, previous)
 		writeError(w, http.StatusInternalServerError, "could not update post")
 		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// restorePost puts the filesystem back to the pre-update state after a DB
+// failure: the directory goes back to originalSlug (when renamed) and the
+// previous file content is rewritten. Best effort — the DB unchanged is the
+// source of truth for the failed request.
+func restorePost(store *storage.Storage, newSlug, originalSlug string, previous *storage.PostFile) {
+	if newSlug != originalSlug {
+		if err := store.Rename(newSlug, originalSlug); err != nil {
+			store.Delete(newSlug)
+		}
+	}
+	_ = store.Write(originalSlug, previous)
 }
 
 // DeletePost removes a post's file and DB record (admin).
