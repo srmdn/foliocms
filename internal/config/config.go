@@ -67,6 +67,9 @@ func Load(envFile string) (*Config, error) {
 	if jwtSecret == "" {
 		return nil, fmt.Errorf("JWT_SECRET is required")
 	}
+	if len(jwtSecret) < 32 {
+		return nil, fmt.Errorf("JWT_SECRET must be at least 32 characters (got %d)", len(jwtSecret))
+	}
 
 	contentDir := getEnv("CONTENT_DIR", "content/blog")
 	mediaDir := filepath.Join(filepath.Dir(contentDir), "media")

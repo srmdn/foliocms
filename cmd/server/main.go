@@ -73,6 +73,7 @@ func main() {
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)
 	r.Use(chimiddleware.RealIP)
+	r.Use(middleware.SecurityHeaders)
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -96,8 +97,12 @@ func main() {
 	}
 
 	// Admin SPA (embedded React build)
-	r.Handle("/admin", adminui.Handler())
-	r.Handle("/admin/*", adminui.Handler())
+	adminHandler := adminui.Handler()
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.AdminCSP)
+		r.Handle("/admin", adminHandler)
+		r.Handle("/admin/*", adminHandler)
+	})
 
 	// Serve local media files (local driver only; S3 files are served from the bucket directly)
 	if cfg.MediaStorage != "s3" {
