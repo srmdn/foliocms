@@ -2,7 +2,10 @@ package handler
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -31,19 +34,43 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Rate-limit failure attempts per IP, per account, and per IP+account so
+	// rotating spoofed X-Forwarded-For values still trip the account key.
+	// Checks run before any password hashing: throttled requests must not
+	// burn the CPU budget that protected logins use.
+	ip := clientIP(r)
+	email := strings.ToLower(req.Email)
+	keys := []string{"ip:" + ip, "acct:" + email, "acct:" + ip + "\x00" + email}
+	var retryAfter time.Duration
+	for _, k := range keys {
+		if res := h.loginLimiter.Allow(k); !res.Allowed && res.RetryAfter > retryAfter {
+			retryAfter = res.RetryAfter
+		}
+	}
+	if retryAfter > 0 {
+		writeTooManyAttempts(w, retryAfter)
+		return
+	}
+
 	var userID int64
 	var passwdHash string
 	err := h.db.QueryRow(
 		`SELECT id, passwd_hash FROM users WHERE email = ?`, req.Email,
 	).Scan(&userID, &passwdHash)
 	if err != nil {
+		recordLoginFailure(h, keys)
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(passwdHash), []byte(req.Password)); err != nil {
+		recordLoginFailure(h, keys)
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
+	}
+
+	for _, k := range keys {
+		h.loginLimiter.Success(k)
 	}
 
 	token, err := auth.GenerateToken(userID, h.cfg.JWTSecret)
@@ -72,6 +99,29 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, loginResponse{
 		CSRFToken: auth.CSRFTokenFromClaims(claims, h.cfg.JWTSecret),
 	})
+}
+
+func recordLoginFailure(h *Handler, keys []string) {
+	for _, k := range keys {
+		h.loginLimiter.Fail(k)
+	}
+}
+
+func clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
+func writeTooManyAttempts(w http.ResponseWriter, retryAfter time.Duration) {
+	seconds := int(retryAfter / time.Second)
+	if seconds < 1 {
+		seconds = 1
+	}
+	w.Header().Set("Retry-After", strconv.Itoa(seconds))
+	writeError(w, http.StatusTooManyRequests, "too many login attempts, try again later")
 }
 
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {

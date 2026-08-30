@@ -3,11 +3,13 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/srmdn/foliocms/internal/config"
 	"github.com/srmdn/foliocms/internal/db"
 	"github.com/srmdn/foliocms/internal/mailer"
 	"github.com/srmdn/foliocms/internal/media"
+	"github.com/srmdn/foliocms/internal/ratelimit"
 	"github.com/srmdn/foliocms/internal/rebuild"
 )
 
@@ -18,20 +20,36 @@ type MailSender interface {
 
 // Handler holds shared dependencies for all HTTP handlers.
 type Handler struct {
-	db          *db.DB
-	cfg         *config.Config
-	rebuilder   *rebuild.Rebuilder
-	mailer      MailSender
-	mediaDriver media.MediaDriver
+	db           *db.DB
+	cfg          *config.Config
+	rebuilder    *rebuild.Rebuilder
+	mailer       MailSender
+	mediaDriver  media.MediaDriver
+	loginLimiter *ratelimit.Limiter
 }
 
 func New(database *db.DB, cfg *config.Config) *Handler {
 	m := mailer.New(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUsername, cfg.SMTPPassword, cfg.SMTPFrom)
-	return &Handler{db: database, cfg: cfg, mailer: m}
+	return &Handler{
+		db:     database,
+		cfg:    cfg,
+		mailer: m,
+		loginLimiter: ratelimit.New(ratelimit.Options{
+			Window:       time.Minute,
+			MaxFailures:  3,
+			LockoutAfter: 3,
+			Lockout:      time.Hour,
+		}),
+	}
 }
 
 func (h *Handler) SetMailer(m MailSender) {
 	h.mailer = m
+}
+
+// SetLoginLimiter replaces the auth failure limiter (used by tests).
+func (h *Handler) SetLoginLimiter(l *ratelimit.Limiter) {
+	h.loginLimiter = l
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
