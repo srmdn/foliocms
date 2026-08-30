@@ -5,12 +5,15 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/srmdn/foliocms/internal/config"
 	"github.com/srmdn/foliocms/internal/handler"
+	"github.com/srmdn/foliocms/internal/ratelimit"
 )
 
 type recordingSender struct {
@@ -125,5 +128,101 @@ func TestSendNewsletterSMTPNotConfigured(t *testing.T) {
 
 	if w.Code != http.StatusServiceUnavailable {
 		t.Errorf("expected 503, got %d", w.Code)
+	}
+}
+
+func TestSubscribeNormalizesEmail(t *testing.T) {
+	database := newTestDB(t)
+	h := handler.New(database, &config.Config{ContentDir: t.TempDir(), JWTSecret: "test-secret"})
+	r := newsletterRouter(h)
+
+	subscribeEmail(t, r, "  Alice@Example.COM  ")
+
+	var email string
+	database.QueryRow(`SELECT email FROM subscribers`).Scan(&email)
+	if email != "alice@example.com" {
+		t.Errorf("stored email = %q, want alice@example.com", email)
+	}
+}
+
+func TestSubscribeRejectsInvalidEmail(t *testing.T) {
+	h, _ := newNewsletterHandler(t, t.TempDir(), "https://example.com")
+	r := newsletterRouter(h)
+
+	for _, bad := range []string{"not-an-email", "user@nodot", "user@.com", "a@b@c.com"} {
+		b, _ := json.Marshal(map[string]string{"email": bad})
+		req := httptest.NewRequest(http.MethodPost, "/api/subscribe", bytes.NewReader(b))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("email %q: got %d, want 400", bad, w.Code)
+		}
+	}
+}
+
+func TestSubscribeRateLimited(t *testing.T) {
+	h, _ := newNewsletterHandler(t, t.TempDir(), "https://example.com")
+	r := newsletterRouter(h)
+
+	// Five invalid emails trip the per-IP throttle (every one is a failure).
+	for i := 0; i < 5; i++ {
+		b, _ := json.Marshal(map[string]string{"email": "not-an-email"})
+		req := httptest.NewRequest(http.MethodPost, "/api/subscribe", bytes.NewReader(b))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("attempt %d: status = %d, want 400", i+1, w.Code)
+		}
+	}
+	// A valid email is also refused: the IP is throttled.
+	b, _ := json.Marshal(map[string]string{"email": "fresh@example.com"})
+	req := httptest.NewRequest(http.MethodPost, "/api/subscribe", bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429; body: %s", w.Code, w.Body.String())
+	}
+	v := w.Header().Get("Retry-After")
+	if v == "" {
+		t.Fatal("expected Retry-After header")
+	}
+	if n, err := strconv.Atoi(v); err != nil || n < 1 {
+		t.Fatalf("bad Retry-After %q", v)
+	}
+}
+
+func TestSubscribeSuccessResetsLimit(t *testing.T) {
+	h, _ := newNewsletterHandler(t, t.TempDir(), "https://example.com")
+	r := newsletterRouter(h)
+	h.SetSubscribeLimiter(ratelimit.New(ratelimit.Options{
+		Window:       50 * time.Millisecond,
+		MaxFailures:  3,
+		LockoutAfter: 3,
+		Lockout:      200 * time.Millisecond,
+	}))
+
+	for i := 0; i < 2; i++ {
+		b, _ := json.Marshal(map[string]string{"email": "not-an-email"})
+		req := httptest.NewRequest(http.MethodPost, "/api/subscribe", bytes.NewReader(b))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("attempt %d: status = %d, want 400", i+1, w.Code)
+		}
+	}
+	subscribeEmail(t, r, "works@example.com")
+	for i := 0; i < 2; i++ {
+		b, _ := json.Marshal(map[string]string{"email": "not-an-email"})
+		req := httptest.NewRequest(http.MethodPost, "/api/subscribe", bytes.NewReader(b))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("attempt %d after reset: status = %d, want 400", i+1, w.Code)
+		}
 	}
 }

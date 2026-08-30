@@ -48,7 +48,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if retryAfter > 0 {
-		writeTooManyAttempts(w, retryAfter)
+		writeRateLimited(w, retryAfter, "too many login attempts, try again later")
 		return
 	}
 
@@ -115,13 +115,13 @@ func clientIP(r *http.Request) string {
 	return host
 }
 
-func writeTooManyAttempts(w http.ResponseWriter, retryAfter time.Duration) {
+func writeRateLimited(w http.ResponseWriter, retryAfter time.Duration, message string) {
 	seconds := int(retryAfter / time.Second)
 	if seconds < 1 {
 		seconds = 1
 	}
 	w.Header().Set("Retry-After", strconv.Itoa(seconds))
-	writeError(w, http.StatusTooManyRequests, "too many login attempts, try again later")
+	writeError(w, http.StatusTooManyRequests, message)
 }
 
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {

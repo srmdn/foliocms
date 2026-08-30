@@ -3,12 +3,17 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/srmdn/foliocms/internal/model"
 )
+
+// emailRe is a pragmatic basic-format check (hostname requires a TLD dot);
+// full RFC parsing is unnecessary for a subscribe endpoint.
+var emailRe = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 
 // Subscribe adds a new subscriber. POST /api/subscribe
 func (h *Handler) Subscribe(w http.ResponseWriter, r *http.Request) {
@@ -20,14 +25,29 @@ func (h *Handler) Subscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Throttle failures per IP; a successful subscription resets the limit.
+	key := "sub:" + clientIP(r)
+	if res := h.subscribeLimiter.Allow(key); !res.Allowed {
+		writeRateLimited(w, res.RetryAfter, "too many requests, try again later")
+		return
+	}
+
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+	if !emailRe.MatchString(email) {
+		h.subscribeLimiter.Fail(key)
+		writeError(w, http.StatusBadRequest, "invalid email")
+		return
+	}
+
 	token := uuid.New().String()
 	_, err := h.db.Exec(
 		`INSERT INTO subscribers (email, token) VALUES (?, ?)`,
-		req.Email, token,
+		email, token,
 	)
 	if err != nil {
 		// SQLite unique constraint violation
 		if isUniqueErr(err) {
+			h.subscribeLimiter.Fail(key)
 			writeError(w, http.StatusConflict, "already subscribed")
 			return
 		}
@@ -35,6 +55,7 @@ func (h *Handler) Subscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.subscribeLimiter.Success(key)
 	w.WriteHeader(http.StatusCreated)
 }
 

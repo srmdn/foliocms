@@ -11,11 +11,10 @@ import (
 const maxUploadSize = 10 << 20 // 10 MB
 
 var allowedMIMETypes = map[string]bool{
-	"image/jpeg":    true,
-	"image/png":     true,
-	"image/gif":     true,
-	"image/webp":    true,
-	"image/svg+xml": true,
+	"image/jpeg": true,
+	"image/png":  true,
+	"image/gif":  true,
+	"image/webp": true,
 }
 
 // SetMediaDriver wires the MediaDriver into the Handler after construction.
