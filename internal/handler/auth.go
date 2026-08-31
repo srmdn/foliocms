@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"log"
 	"net"
 	"net/http"
 	"strconv"
@@ -48,6 +49,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if retryAfter > 0 {
+		log.Printf("security: login rejected for %q from %s: rate limited (%s)", email, ip, retryAfter)
 		writeRateLimited(w, retryAfter, "too many login attempts, try again later")
 		return
 	}
@@ -58,16 +60,20 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		`SELECT id, passwd_hash FROM users WHERE email = ?`, req.Email,
 	).Scan(&userID, &passwdHash)
 	if err != nil {
+		log.Printf("security: failed login for %q from %s (user not found)", email, ip)
 		recordLoginFailure(h, keys)
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(passwdHash), []byte(req.Password)); err != nil {
+		log.Printf("security: failed login for %q from %s (bad password)", email, ip)
 		recordLoginFailure(h, keys)
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
+
+	log.Printf("security: successful login for %q from %s", email, ip)
 
 	for _, k := range keys {
 		h.loginLimiter.Success(k)

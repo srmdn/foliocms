@@ -56,6 +56,16 @@ func runSetup(database *db.DB, cfg *config.Config) error {
 	}
 
 	fmt.Printf("Admin user created: %s\n", email)
+
+	if cfg.AdminEmail != "" || cfg.AdminPasswd != "" {
+		// The run ends right after setup, but clear the process copy so the
+		// credentials cannot leak into anything this process may spawn.
+		os.Unsetenv("ADMIN_EMAIL")
+		os.Unsetenv("ADMIN_PASSWORD")
+		fmt.Println("Note: setup credentials were read from ADMIN_EMAIL / ADMIN_PASSWORD")
+		fmt.Println("      environment variables. To avoid reusing them in future runs,")
+		fmt.Println("      unset them (e.g. `unset ADMIN_EMAIL ADMIN_PASSWORD`).")
+	}
 	return nil
 }
 
