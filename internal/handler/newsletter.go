@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/srmdn/foliocms/internal/model"
 )
 
 // emailRe is a pragmatic basic-format check (hostname requires a TLD dot);
@@ -85,10 +85,18 @@ func (h *Handler) Unsubscribe(w http.ResponseWriter, r *http.Request) {
 		`<body><h1>You have been unsubscribed.</h1><p>You will no longer receive emails from this site.</p></body></html>`))
 }
 
+// subscriberView is the admin-facing shape. The unsubscribe token is an
+// internal key and must never leave the server.
+type subscriberView struct {
+	ID           int64     `json:"id"`
+	Email        string    `json:"email"`
+	SubscribedAt time.Time `json:"subscribed_at"`
+}
+
 // ListSubscribers returns all subscribers. GET /api/admin/subscribers
 func (h *Handler) ListSubscribers(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.Query(
-		`SELECT id, email, token, subscribed_at FROM subscribers ORDER BY subscribed_at DESC`,
+		`SELECT id, email, subscribed_at FROM subscribers ORDER BY subscribed_at DESC`,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not list subscribers")
@@ -96,17 +104,17 @@ func (h *Handler) ListSubscribers(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var subs []model.Subscriber
+	var subs []subscriberView
 	for rows.Next() {
-		var s model.Subscriber
-		if err := rows.Scan(&s.ID, &s.Email, &s.Token, &s.SubscribedAt); err != nil {
+		var s subscriberView
+		if err := rows.Scan(&s.ID, &s.Email, &s.SubscribedAt); err != nil {
 			writeError(w, http.StatusInternalServerError, "scan error")
 			return
 		}
 		subs = append(subs, s)
 	}
 	if subs == nil {
-		subs = []model.Subscriber{}
+		subs = []subscriberView{}
 	}
 	writeJSON(w, http.StatusOK, subs)
 }

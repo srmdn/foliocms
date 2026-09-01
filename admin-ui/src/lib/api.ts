@@ -20,7 +20,6 @@ export interface PostDetail extends Post {
 export interface Subscriber {
   id: number
   email: string
-  token: string
   subscribed_at: string
 }
 

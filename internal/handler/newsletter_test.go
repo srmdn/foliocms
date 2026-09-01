@@ -63,6 +63,24 @@ func subscribeEmail(t *testing.T, r *chi.Mux, email string) {
 	}
 }
 
+func TestAdminSubscribersOmitsToken(t *testing.T) {
+	h, _ := newNewsletterHandler(t, t.TempDir(), "https://example.com")
+	r := newsletterRouter(h)
+	r.Get("/api/admin/subscribers", h.ListSubscribers)
+
+	subscribeEmail(t, r, "noleak@example.com")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/subscribers", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if strings.Contains(w.Body.String(), `"token"`) {
+		t.Errorf("response leaks token key: %s", w.Body.String())
+	}
+}
+
 func TestSendNewsletterInjectsUnsubscribeLink(t *testing.T) {
 	dir := t.TempDir()
 	h, sender := newNewsletterHandler(t, dir, "https://example.com")
