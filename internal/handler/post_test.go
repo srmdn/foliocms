@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -317,6 +318,64 @@ func TestUpdatePost(t *testing.T) {
 
 	if w.Code != http.StatusNoContent {
 		t.Errorf("status: got %d, want %d\nbody: %s", w.Code, http.StatusNoContent, w.Body.String())
+	}
+}
+
+func TestPublishNowVisibleImmediately(t *testing.T) {
+	// Regression for F1 (e2e 2026-09-01): a post published "now" must appear
+	// in the public list without waiting for the UTC calendar day to change.
+	dir := t.TempDir()
+	h := newTestHandler(t, dir)
+	r := routerWithHandler(h)
+
+	createPost(t, r, "now-post", map[string]any{"title": "Now", "draft": false})
+
+	var posts []struct {
+		Slug string `json:"slug"`
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/posts", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if err := json.Unmarshal(w.Body.Bytes(), &posts); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	found := false
+	for _, p := range posts {
+		if p.Slug == "now-post" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("published-now post missing from public list: %v", posts)
+	}
+}
+
+func TestPublishDateOnlyNormalized(t *testing.T) {
+	dir := t.TempDir()
+	database := newTestDB(t)
+	h := handler.New(database, &config.Config{ContentDir: dir, JWTSecret: "test-secret"})
+	r := routerWithHandler(h)
+
+	createPost(t, r, "dated-post", map[string]any{
+		"title":        "Dated",
+		"draft":        false,
+		"publish_date": "2025-01-15",
+	})
+
+	var stored string
+	if err := database.QueryRow(`SELECT publish_date FROM posts WHERE slug='dated-post'`).Scan(&stored); err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if stored != "2025-01-15T23:59:59Z" {
+		t.Errorf("publish_date = %q, want %q", stored, "2025-01-15T23:59:59Z")
+	}
+
+	// Must be visible immediately (past date, any format).
+	req := httptest.NewRequest(http.MethodGet, "/api/posts", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if !strings.Contains(w.Body.String(), `"dated-post"`) {
+		t.Errorf("dated-post missing from public list; body: %s", w.Body.String())
 	}
 }
 

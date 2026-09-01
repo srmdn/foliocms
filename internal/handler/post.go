@@ -57,7 +57,7 @@ type postListResponse struct {
 // ListPosts returns published posts (public).
 func (h *Handler) ListPosts(w http.ResponseWriter, r *http.Request) {
 	query := `SELECT id, slug, title, description, tags, draft, publish_date, created_at, updated_at
-		 FROM posts WHERE draft = 0 AND (publish_date IS NULL OR publish_date <= CURRENT_TIMESTAMP)`
+		 FROM posts WHERE draft = 0 AND (publish_date IS NULL OR datetime(publish_date) <= CURRENT_TIMESTAMP)`
 	args := []any{}
 
 	tag := strings.TrimSpace(r.URL.Query().Get("tag"))
@@ -170,6 +170,33 @@ func (h *Handler) GetAdminPost(w http.ResponseWriter, r *http.Request) {
 }
 
 // CreatePost creates a new post (admin).
+// normalizePublishDate coerces a client-supplied publish_date into the
+// canonical form:
+//   - ""            → publish now (current UTC instant)
+//   - "YYYY-MM-DD"  → end of that UTC date ("...T23:59:59Z"); a date-only
+//     value means "visible during that date", never blocked by TZ edge
+//   - full RFC3339  → unchanged
+func normalizePublishDate(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return storage.FormatPublishDate(time.Now())
+	}
+	t, ok := storage.ParsePublishDate(s)
+	if !ok {
+		// Keep as-is; the datetime() filter tolerates unrecognized strings
+		// by returning NULL (hidden) rather than failing.
+		return s
+	}
+	if _, err := time.Parse("2006-01-02", s); err == nil {
+		return t.UTC().Format("2006-01-02") + "T23:59:59Z"
+	}
+	if len(s) == 19 && (s[10] == ' ' || s[10] == 'T') {
+		// "YYYY-MM-DD HH:MM:SS" without zone — treat as UTC.
+		return t.UTC().Format(time.RFC3339)
+	}
+	return t.UTC().Format(time.RFC3339)
+}
+
 func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if !slugPattern.MatchString(slug) {
@@ -193,10 +220,7 @@ func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	publishDate := req.PublishDate
-	if publishDate == "" {
-		publishDate = storage.FormatPublishDate(time.Now())
-	}
+	publishDate := normalizePublishDate(req.PublishDate)
 
 	// Save hero image if provided.
 	heroImagePath := ""
@@ -287,10 +311,7 @@ func (h *Handler) UpdatePost(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	publishDate := req.PublishDate
-	if publishDate == "" {
-		publishDate = storage.FormatPublishDate(time.Now())
-	}
+	publishDate := normalizePublishDate(req.PublishDate)
 
 	// Preserve existing hero image path unless a new one is provided.
 	heroImagePath := ""

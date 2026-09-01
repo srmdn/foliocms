@@ -145,10 +145,36 @@ func TestReadUnclosedFrontmatter(t *testing.T) {
 }
 
 func TestFormatPublishDate(t *testing.T) {
-	tt := time.Date(2026, 3, 27, 15, 30, 0, 0, time.UTC)
+	tt := time.Date(2026, 3, 27, 15, 30, 0, 0, time.FixedZone("WIB", 7*60*60))
 	got := storage.FormatPublishDate(tt)
-	want := "2026-03-27"
+	want := "2026-03-27T08:30:00Z"
 	if got != want {
 		t.Errorf("FormatPublishDate: got %q, want %q", got, want)
+	}
+}
+
+func TestParsePublishDate(t *testing.T) {
+	cases := map[string]struct {
+		in       string
+		want     string
+		expected bool
+	}{
+		"rfc3339":      {"2026-03-27T08:30:00Z", "2026-03-27T08:30:00Z", true},
+		"date only":    {"2026-03-27", "2026-03-27T00:00:00Z", true},
+		"sqlite style": {"2026-03-27 08:30:00", "2026-03-27T08:30:00Z", true},
+		"t separator":  {"2026-03-27T08:30:00", "2026-03-27T08:30:00Z", true},
+		"empty":        {"", "", false},
+		"garbage":      {"not-a-date", "", false},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			got, ok := storage.ParsePublishDate(c.in)
+			if ok != c.expected {
+				t.Fatalf("ok = %v, want %v", ok, c.expected)
+			}
+			if c.expected && got.UTC().Format(time.RFC3339) != c.want {
+				t.Errorf("got %q, want %q", got.UTC().Format(time.RFC3339), c.want)
+			}
+		})
 	}
 }

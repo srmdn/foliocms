@@ -14,10 +14,6 @@ function generateSlug(title: string): string {
     .slice(0, 80)
 }
 
-function todayDate(): string {
-  return new Date().toISOString().slice(0, 10)
-}
-
 export function PostEditor() {
   const { slug } = useParams<{ slug: string }>()
   const isEdit = !!slug
@@ -36,7 +32,9 @@ export function PostEditor() {
   const [slugManual, setSlugManual] = useState(false)
   const [description, setDescription] = useState('')
   const [tags, setTags] = useState('')
-  const [publishDate, setPublishDate] = useState(todayDate())
+  const [publishDate, setPublishDate] = useState('')
+  const [publishDateOriginal, setPublishDateOriginal] = useState('')
+  const [publishDateTouched, setPublishDateTouched] = useState(false)
   const [draft, setDraft] = useState(true)
   const [body, setBody] = useState('')
   const [heroImage, setHeroImage] = useState('')
@@ -68,7 +66,9 @@ export function PostEditor() {
       setSlugManual(true)
       setDescription(post.description ?? '')
       setTags((post.tags ?? []).join(', '))
-      setPublishDate(post.publish_date.slice(0, 10))
+      setPublishDateOriginal(post.publish_date ?? '')
+      setPublishDate((post.publish_date ?? '').slice(0, 10))
+      setPublishDateTouched(false)
       setDraft(post.draft)
       setBody(post.body ?? '')
       setHeroImage(post.hero_image ?? '')
@@ -120,7 +120,7 @@ export function PostEditor() {
       title,
       description,
       tags: tagsArray,
-      publish_date: publishDate,
+      publish_date: publishDateTouched ? publishDate : publishDateOriginal,
       draft,
       body,
       hero_image: heroChanged ? heroImage : '',
@@ -251,8 +251,14 @@ export function PostEditor() {
                 id="publish-date"
                 type="date"
                 value={publishDate}
-                onChange={(e) => setPublishDate(e.target.value)}
+                onChange={(e) => {
+                  setPublishDate(e.target.value)
+                  setPublishDateTouched(true)
+                }}
               />
+              <span className="field-hint">
+                {publishDate === '' && !publishDateTouched ? 'Empty = publish now' : 'Date only = visible during that day'}
+              </span>
             </div>
 
             <div className="field field-row">

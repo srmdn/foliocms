@@ -273,7 +273,25 @@ func marshal(pf *PostFile) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// FormatPublishDate returns today's date as a publishDate string.
+// FormatPublishDate returns the current instant as an RFC3339 UTC string —
+// the canonical publish_date persisted in files and SQLite.
 func FormatPublishDate(t time.Time) string {
-	return t.Format("2006-01-02")
+	return t.UTC().Format(time.RFC3339)
+}
+
+// ParsePublishDate reads a publishDate value from frontmatter or the DB.
+// Accepts RFC3339 (with T/Z), plain dates (YYYY-MM-DD), and common spacers.
+func ParsePublishDate(s string) (time.Time, bool) {
+	if s == "" {
+		return time.Time{}, false
+	}
+	for _, layout := range []string{
+		time.RFC3339, "2006-01-02 15:04:05", "2006-01-02T15:04:05",
+		"2006-01-02 15:04", "2006-01-02",
+	} {
+		if t, err := time.Parse(layout, strings.TrimSpace(s)); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
 }
