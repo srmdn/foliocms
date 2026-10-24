@@ -1,3 +1,8 @@
+> **Archived project (October 2026).** FolioCMS is no longer maintained and
+> the hosted demo has been retired. The source remains available read-only for
+> reference. The `foliocms.com` domain is available for acquisition; contact
+> [mail@srmdn.com](mailto:mail@srmdn.com).
+
 # Folio
 
 A lightweight, self-hostable CMS. Single Go binary. SQLite. Ships with a default Astro theme. No Docker required.
